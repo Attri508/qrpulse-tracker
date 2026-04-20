@@ -1,9 +1,9 @@
 const https = require('https');
-const url = require('url');
 
 module.exports = function handler(req, res) {
-  const parsedUrl = url.parse(req.url, true);
-  const { id, redirect } = parsedUrl.query;
+  const urlObj = new URL(req.url, `https://${req.headers.host}`);
+  const id = urlObj.searchParams.get('id');
+  const redirect = urlObj.searchParams.get('redirect');
 
   if (id) {
     const body = JSON.stringify({
@@ -11,14 +11,12 @@ module.exports = function handler(req, res) {
       user_agent: req.headers['user-agent'] || null,
     });
 
-    const supabaseUrl = new URL(
-      '/rest/v1/qr_scans',
-      process.env.SUPABASE_URL
-    );
+    // Supabase URL parse
+    const supabaseHost = process.env.SUPABASE_URL.replace('https://', '');
 
     const options = {
-      hostname: supabaseUrl.hostname,
-      path: supabaseUrl.pathname,
+      hostname: supabaseHost,
+      path: '/rest/v1/qr_scans',
       method: 'POST',
       headers: {
         'apikey': process.env.SUPABASE_ANON_KEY,
@@ -29,15 +27,18 @@ module.exports = function handler(req, res) {
       },
     };
 
-    // Non-blocking — redirect wait nahi karega
-    const reqHttp = https.request(options, () => {});
-    reqHttp.on('error', (e) => console.error('Supabase error:', e));
-    reqHttp.write(body);
-    reqHttp.end();
+    console.log('Inserting scan for qr_id:', id); // ✅ Log for debugging
+
+    const supabaseReq = https.request(options, (supabaseRes) => {
+      console.log('Supabase status:', supabaseRes.statusCode); // ✅ Response log
+      supabaseRes.on('data', (d) => console.log('Supabase response:', d.toString()));
+    });
+
+    supabaseReq.on('error', (e) => console.error('Supabase error:', e.message));
+    supabaseReq.write(body);
+    supabaseReq.end();
   }
 
-  const target = redirect
-    ? decodeURIComponent(redirect)
-    : 'https://qrpulse.app';
+  const target = redirect ? decodeURIComponent(redirect) : 'https://qrpulse.app';
   res.redirect(302, target);
 };
